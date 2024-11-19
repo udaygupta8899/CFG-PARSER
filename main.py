@@ -1,6 +1,7 @@
 import streamlit as st
 from graphviz import Digraph
 import json
+import re
 
 class Node:
     def __init__(self, symbol, children=None):
@@ -9,13 +10,16 @@ class Node:
 
     def to_graphviz(self, graph=None, parent_id=None, node_id=0):
         """
-        Converts the tree to a Graphviz Digraph object.
+        Converts the tree to a Graphviz Digraph object with more robust handling.
         """
         if graph is None:
-            graph = Digraph(format='png')
+            graph = Digraph(format='svg', engine='dot')
+            graph.attr('node', shape='rectangle')
         
         current_id = str(node_id)
-        graph.node(current_id, self.symbol)
+        # Escape special characters in node labels
+        safe_symbol = self.symbol.replace('"', '\\"')
+        graph.node(current_id, label=safe_symbol)
 
         if parent_id is not None:
             graph.edge(parent_id, current_id)
@@ -26,8 +30,24 @@ class Node:
         
         return next_id
 
+def validate_grammar_input(grammar_input):
+    """
+    Validate grammar input and provide detailed error messages.
+    """
+    # Check for basic structural integrity
+    if not grammar_input or len(grammar_input.strip()) == 0:
+        raise ValueError("Grammar cannot be empty.")
+    
+    # Check for valid rules
+    lines = grammar_input.strip().split('\n')
+    for line in lines:
+        if not re.match(r'^\s*[A-Z]\s*->\s*[a-zA-Z\s|]+$', line):
+            raise ValueError(f"Invalid grammar rule format: {line}")
+    
+    return True
+
 def build_derivation_tree(table, grammar, string):
-    """Builds the derivation tree from the CYK table."""
+    """Builds the derivation tree from the CYK table with enhanced error handling."""
     n = len(string)
     start_symbol = list(grammar.keys())[0]  # First key is typically the start symbol
 
@@ -45,17 +65,20 @@ def build_derivation_tree(table, grammar, string):
             return None
 
         # Try all possible ways to derive the symbol
-        for k in range(i, j):
-            for lhs, rhs_list in grammar.items():
-                for rhs in rhs_list:
-                    # Support both binary and unary rules
-                    if len(rhs) == 2 and rhs[0] in table[i][k] and rhs[1] in table[k + 1][j]:
-                        left = helper(i, k, rhs[0])
-                        right = helper(k + 1, j, rhs[1])
-                        if left and right:
-                            return Node(lhs, [left, right])
-                    elif len(rhs) == 1 and rhs[0] in table[i][j]:
-                        # Unary rule support
+        for lhs, rhs_list in grammar.items():
+            for rhs in rhs_list:
+                # Support both binary and unary rules
+                if len(rhs) == 2:
+                    for k in range(i, j):
+                        left, right = rhs
+                        if left in table[i][k] and right in table[k + 1][j]:
+                            left_subtree = helper(i, k, left)
+                            right_subtree = helper(k + 1, j, right)
+                            if left_subtree and right_subtree:
+                                return Node(lhs, [left_subtree, right_subtree])
+                elif len(rhs) == 1:
+                    # Unary rule support
+                    if rhs[0] in table[i][j]:
                         inner = helper(i, j, rhs[0])
                         if inner:
                             return Node(lhs, [inner])
@@ -64,6 +87,13 @@ def build_derivation_tree(table, grammar, string):
     return helper(0, n - 1, start_symbol)
 
 def cyk_parser(grammar, input_string):
+    """
+    Enhanced CYK parser with more robust error checking and rule handling.
+    """
+    # Validate input
+    if not input_string:
+        raise ValueError("Input string cannot be empty.")
+    
     n = len(input_string)
     table = [[set() for _ in range(n)] for _ in range(n)]
 
@@ -93,74 +123,99 @@ def cyk_parser(grammar, input_string):
                                 table[start][end].add(lhs)
     
     # Check if any symbol is in the top-right cell
-    start_symbol = list(grammar.keys())[0]
     return len(table[0][n - 1]) > 0, table
 
 def text_to_json(cfg_text):
     """
-    Converts a text-based CFG into JSON format.
-    cfg_text: str - Input CFG in text form.
-    Returns: dict - CFG in JSON format.
+    Converts a text-based CFG into JSON format with improved parsing.
     """
     grammar = {}
     lines = cfg_text.strip().split('\n')
     for line in lines:
-        lhs, rhs = line.split('->')
-        lhs = lhs.strip()
-        rhs_rules = [r.strip().split() for r in rhs.split('|')]
+        # Use regex to split on -> and handle potential whitespace
+        parts = re.split(r'\s*->\s*', line.strip())
+        if len(parts) != 2:
+            raise ValueError(f"Invalid grammar rule format: {line}")
+        
+        lhs = parts[0].strip()
+        rhs_rules = [r.strip().split() for r in parts[1].split('|')]
+        
         if lhs in grammar:
             grammar[lhs].extend(rhs_rules)
         else:
             grammar[lhs] = rhs_rules
+    
     return grammar
 
-# Streamlit UI
-st.title("CFG Parser with Derivation Tree Visualization")
-st.write("Enter a Context-Free Grammar (CFG) and a string to check if the string belongs to the language.")
+# Streamlit UI Configuration
+st.set_page_config(
+    page_title="CFG Parser",
+    page_icon="🔍",
+    layout="wide"
+)
 
-# Sidebar Inputs
-st.sidebar.header("Input CFG and String")
-input_mode = st.sidebar.radio("Input Mode", ["JSON", "Text"])
+# Main App
+st.title("Context-Free Grammar (CFG) Parser")
+st.markdown("""
+    ### Parse and Visualize Context-Free Grammars
+    - Enter a grammar in JSON or Text format
+    - Specify an input string to parse
+    - Visualize the derivation tree
+""")
 
-if input_mode == "JSON":
-    grammar_input = st.sidebar.text_area(
-        "Enter Grammar (JSON Format)", 
-        value='{"S": [["A", "B"], ["B", "A"], ["A"]], "A": [["a"], ["S"]], "B": [["b"]]}'
-    )
-    try:
-        grammar = json.loads(grammar_input)
-    except json.JSONDecodeError:
-        st.error("Invalid JSON grammar format. Please provide a valid JSON input.")
-        st.stop()
+# Sidebar Configuration
+st.sidebar.header("Grammar Input")
+input_mode = st.sidebar.radio("Input Mode", ["Text", "JSON"])
 
-elif input_mode == "Text":
-    grammar_text_input = st.sidebar.text_area(
-        "Enter Grammar (Text Format)", 
-        value="S -> A B | B A | A\nA -> a | S\nB -> b"
-    )
-    try:
+# Error handling wrapper for grammar input
+try:
+    if input_mode == "Text":
+        grammar_text_input = st.sidebar.text_area(
+            "Enter Grammar (Text Format)", 
+            value="S -> A B | B A | A\nA -> a | S\nB -> b",
+            height=200
+        )
+        validate_grammar_input(grammar_text_input)
         grammar = text_to_json(grammar_text_input)
-        st.sidebar.success("Grammar successfully converted to JSON:")
-        st.sidebar.json(grammar)
-    except ValueError as e:
-        st.sidebar.error(f"Invalid grammar format: {e}")
-        st.stop()
-
-string_input = st.sidebar.text_input("Enter the string to parse", value="ab")
-
-# Parse Button
-if st.sidebar.button("Parse"):
-    is_valid, table = cyk_parser(grammar, string_input)
-    if is_valid:
-        st.success("The string is valid and belongs to the language!")
         
-        tree = build_derivation_tree(table, grammar, string_input)
-        if tree:
-            st.subheader("Derivation Tree")
-            graph = Digraph(format="svg")
-            tree.to_graphviz(graph)
-            st.graphviz_chart(graph.source)
+    else:  # JSON Mode
+        grammar_input = st.sidebar.text_area(
+            "Enter Grammar (JSON Format)", 
+            value='{"S": [["A", "B"], ["B", "A"], ["A"]], "A": [["a"], ["S"]], "B": [["b"]]}',
+            height=200
+        )
+        grammar = json.loads(grammar_input)
+
+    string_input = st.sidebar.text_input("Enter the string to parse", value="ab")
+    
+    # Parse Button
+    if st.sidebar.button("Parse Grammar", type="primary"):
+        # Validate input string
+        if not string_input:
+            st.error("Please enter a valid input string.")
         else:
-            st.error("Failed to generate derivation tree.")
-    else:
-        st.error("The string is invalid and does not belong to the language.")
+            try:
+                is_valid, table = cyk_parser(grammar, string_input)
+                
+                if is_valid:
+                    st.success(f"✅ The string '{string_input}' is valid in the given grammar!")
+                    
+                    # Generate and display derivation tree
+                    tree = build_derivation_tree(table, grammar, string_input)
+                    if tree:
+                        st.subheader("Derivation Tree Visualization")
+                        graph = Digraph(format="svg")
+                        tree.to_graphviz(graph)
+                        st.graphviz_chart(graph.source)
+                    else:
+                        st.warning("Could not generate a complete derivation tree.")
+                else:
+                    st.error(f"❌ The string '{string_input}' is not valid in the given grammar.")
+            
+            except Exception as e:
+                st.error(f"Parsing error: {str(e)}")
+
+except (ValueError, json.JSONDecodeError) as e:
+    st.sidebar.error(f"Grammar Input Error: {str(e)}")
+except Exception as e:
+    st.sidebar.error(f"Unexpected error: {str(e)}")
