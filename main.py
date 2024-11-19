@@ -224,10 +224,8 @@ except Exception as e:
 st.markdown("""
     <div style="position: fixed; bottom: 10px; right: 10px; padding: 10px; border: 2px solid #4CAF50; border-radius: 5px; background-color: #333333; color: white;">
         <h4 style="margin: 0; font-weight: bold;">Team Members:</h4>
-        <p style="margin: 0;">---------------------------</p>
         <p style="margin: 5px 0;">Uday Kumar Gupta (2023UAI1800)</p>
         <p style="margin: 0;">Gaurav Sharma (2023UAI1810)</p>
-        <p style="margin: 0;">---------------------------</p>
     </div>
 """, unsafe_allow_html=True)
 
