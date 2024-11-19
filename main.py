@@ -156,7 +156,7 @@ st.set_page_config(
 
 # Main App
 st.title("Context-Free Grammar (CFG) Parser")
-st.markdown("""
+st.markdown(""" 
     ### Parse and Visualize Context-Free Grammars
     - Enter a grammar in JSON or Text format
     - Specify an input string to parse
@@ -219,3 +219,13 @@ except (ValueError, json.JSONDecodeError) as e:
     st.sidebar.error(f"Grammar Input Error: {str(e)}")
 except Exception as e:
     st.sidebar.error(f"Unexpected error: {str(e)}")
+
+# Contributor Box at the bottom-right
+st.markdown("""
+    <div style="position: fixed; bottom: 10px; right: 10px; padding: 10px; border: 2px solid #4CAF50; border-radius: 5px; background-color: #333333; color: white;">
+        <h4 style="margin: 0; font-weight: bold;">Team Members:</h4>
+        <p style="margin: 5px 0;">Uday Kumar Gupta (2023UAI1800)</p>
+        <p style="margin: 0;">Gaurav Sharma (2023UAI18)</p>
+    </div>
+""", unsafe_allow_html=True)
+
