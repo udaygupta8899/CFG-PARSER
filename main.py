@@ -1,6 +1,6 @@
 import streamlit as st
-from app.parser import cyk_parser
-from app.tree import build_derivation_tree
+from parser import cyk_parser
+from tree import build_derivation_tree
 from graphviz import Digraph
 import json
 import re
