@@ -47,7 +47,7 @@ def validate_grammar_input(grammar_input):
     return True
 
 def build_derivation_tree(table, grammar, string):
-    """Builds the derivation tree from the CYK table with an iterative approach to avoid deep recursion."""
+    """Builds the derivation tree from the CYK table with enhanced error handling and memoization."""
     n = len(string)
     start_symbol = list(grammar.keys())[0]  # First key is typically the start symbol
 
@@ -55,51 +55,51 @@ def build_derivation_tree(table, grammar, string):
     if start_symbol not in table[0][n - 1]:
         return None
 
-    # Iterative approach using a stack
-    stack = [(0, n - 1, start_symbol, None)]  # (i, j, symbol, parent_node)
-    root = None
-    nodes = {}  # Map (i, j, symbol) -> Node
+    # Cache to store results of (i, j, symbol)
+    cache = {}
 
-    while stack:
-        i, j, symbol, parent_node = stack.pop()
+    def helper(i, j, symbol):
+        # Use memoization to avoid recomputing
+        if (i, j, symbol) in cache:
+            return cache[(i, j, symbol)]
 
-        # If the node already exists, link it
-        if (i, j, symbol) in nodes:
-            node = nodes[(i, j, symbol)]
-        else:
-            # Create a new node
-            node = Node(symbol)
-            nodes[(i, j, symbol)] = node
-
-        # Link the node to its parent if applicable
-        if parent_node:
-            parent_node.children.append(node)
-
-        # Assign root if it hasn't been set
-        if root is None:
-            root = node
-
-        # Base case: Single character derivation
+        # Base case: single character
         if i == j:
-            node.children.append(Node(string[i]))
-            continue
+            for lhs, rhs_list in grammar.items():
+                for rhs in rhs_list:
+                    if len(rhs) == 1 and rhs[0] == string[i]:
+                        node = Node(lhs, [Node(string[i])])
+                        cache[(i, j, symbol)] = node
+                        return node
+            cache[(i, j, symbol)] = None
+            return None
 
-        # Recursive case: Add children based on grammar
+        # Try all possible ways to derive the symbol
         for lhs, rhs_list in grammar.items():
             for rhs in rhs_list:
-                if len(rhs) == 2:  # Binary rule
-                    left, right = rhs
+                if len(rhs) == 2:
                     for k in range(i, j):
+                        left, right = rhs
                         if left in table[i][k] and right in table[k + 1][j]:
-                            stack.append((i, k, left, node))
-                            stack.append((k + 1, j, right, node))
-                            break
-                elif len(rhs) == 1:  # Unary rule
+                            left_subtree = helper(i, k, left)
+                            right_subtree = helper(k + 1, j, right)
+                            if left_subtree and right_subtree:
+                                node = Node(lhs, [left_subtree, right_subtree])
+                                cache[(i, j, symbol)] = node
+                                return node
+                elif len(rhs) == 1:
                     if rhs[0] in table[i][j]:
-                        stack.append((i, j, rhs[0], node))
-                        break
+                        inner = helper(i, j, rhs[0])
+                        if inner:
+                            node = Node(lhs, [inner])
+                            cache[(i, j, symbol)] = node
+                            return node
 
-    return root
+        # If no valid derivation found, cache and return None
+        cache[(i, j, symbol)] = None
+        return None
+
+    return helper(0, n - 1, start_symbol)
 
 
 def cyk_parser(grammar, input_string):
