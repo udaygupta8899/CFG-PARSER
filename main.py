@@ -2,7 +2,8 @@ import streamlit as st
 from graphviz import Digraph
 import json
 import re
-
+import sys
+sys.setrecursionlimit(3000)
 class Node:
     """Represents a node in the derivation tree."""
     def __init__(self, value, children=None):
