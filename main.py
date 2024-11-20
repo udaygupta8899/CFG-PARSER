@@ -78,7 +78,7 @@ def cyk_parser(grammar, input_string):
             for rhs in rhs_list:
                 if len(rhs) == 1 and rhs[0] == char:
                     table[i][i].add(lhs)
-                    backtrack[i][i][lhs] = [Node(char)]
+                    backtrack[i][i][lhs] = [(i, i, char)]
 
     # Recursive case: Fill for substrings of length 2 to n
     for length in range(2, n + 1):
@@ -91,22 +91,41 @@ def cyk_parser(grammar, input_string):
                             left, right = rhs
                             if left in table[start][split] and right in table[split + 1][end]:
                                 table[start][end].add(lhs)
-                                backtrack[start][end][lhs] = [Node(lhs, [
-                                    backtrack[start][split][left][0],
-                                    backtrack[split + 1][end][right][0]
-                                ])]
+                                if lhs not in backtrack[start][end]:
+                                    backtrack[start][end][lhs] = []
+                                backtrack[start][end][lhs].append((split, left, right))
 
     return table, backtrack
 
-def build_derivation_tree(table, backtrack, grammar, string):
+def build_derivation_tree(table, grammar, string):
     """
     Constructs a derivation tree from the CYK table.
     """
     n = len(string)
-    start_symbol = list(grammar.keys())[0]
+    start_symbol = list(grammar.keys())[0]  # Typically the start symbol is the first key
+
+    def construct_tree(start, end, symbol):
+        # Base case for single character
+        if start == end:
+            for lhs, rhs_list in grammar.items():
+                for rhs in rhs_list:
+                    if len(rhs) == 1 and rhs[0] == string[start]:
+                        return Node(lhs, [Node(string[start])])
+            return None
+
+        # Recursively build the tree for the given symbol
+        node = Node(symbol)
+        if symbol in backtrack[start][end]:
+            for (split, left, right) in backtrack[start][end][symbol]:
+                left_node = construct_tree(start, split, left)
+                right_node = construct_tree(split + 1, end, right)
+                if left_node and right_node:
+                    node.children = [left_node, right_node]
+                    break  # Stop after finding the first valid production
+        return node
 
     if start_symbol in table[0][n - 1]:
-        return backtrack[0][n - 1][start_symbol][0]
+        return construct_tree(0, n - 1, start_symbol)
     return None
 
 # Streamlit UI Configuration
@@ -132,7 +151,7 @@ try:
     if input_mode == "Text":
         grammar_text_input = st.sidebar.text_area(
             "Enter Grammar (Text Format)", 
-            value="S -> A B | B A | A C\nA -> a | S\nB -> b\nC -> c",
+            value="S -> A X | B A | A C\nX -> B C\nA -> a | S\nB -> b\nC -> c",
             height=200
         )
         validate_grammar_input(grammar_text_input)
@@ -140,12 +159,12 @@ try:
     else:  # JSON Mode
         grammar_input = st.sidebar.text_area(
             "Enter Grammar (JSON Format)", 
-            value='{"S": [["A", "B"], ["B", "A"], ["A", "C"]], "A": [["a"], ["S"]], "B": [["b"]], "C": [["c"]]}',
+            value='{"S": [["A", "X"], ["B", "A"], ["A", "C"]],"X":[["B","C"]], "A": [["a"], ["S"]], "B": [["b"]], "C": [["c"]]}',
             height=200
         )
         grammar = json.loads(grammar_input)
 
-    string_input = st.sidebar.text_input("Enter the string to parse", value="ac")
+    string_input = st.sidebar.text_input("Enter the string to parse", value="abc")
     
     if st.sidebar.button("Parse Grammar"):
         if not string_input:
@@ -153,7 +172,7 @@ try:
         else:
             try:
                 table, backtrack = cyk_parser(grammar, string_input)
-                tree = build_derivation_tree(table, backtrack, grammar, string_input)
+                tree = build_derivation_tree(table, grammar, string_input)
 
                 if tree:
                     st.success(f"✅ The string '{string_input}' is valid in the given grammar!")
