@@ -3,53 +3,56 @@ from graphviz import Digraph
 import json
 import re
 
+from collections import defaultdict
+
 class Node:
-    def __init__(self, symbol, children=None):
-        self.symbol = symbol
+    """Represents a node in the derivation tree."""
+    def __init__(self, value, children=None):
+        self.value = value
         self.children = children or []
 
-    def to_graphviz(self, graph=None, parent_id=None, node_id=0):
-        """
-        Converts the tree to a Graphviz Digraph object with more robust handling.
-        """
-        if graph is None:
-            graph = Digraph(format='svg', engine='dot')
-            graph.attr('node', shape='rectangle')
-        
-        current_id = str(node_id)
-        # Escape special characters in node labels
-        safe_symbol = self.symbol.replace('"', '\\"')
-        graph.node(current_id, label=safe_symbol)
-
-        if parent_id is not None:
-            graph.edge(parent_id, current_id)
-        
-        next_id = node_id + 1
+    def __str__(self, level=0):
+        result = "  " * level + str(self.value) + "\n"
         for child in self.children:
-            next_id = child.to_graphviz(graph, current_id, next_id)
-        
-        return next_id
+            result += child.__str__(level + 1)
+        return result
 
-def validate_grammar_input(grammar_input):
-    """
-    Validate grammar input and provide detailed error messages.
-    """
-    # Check for basic structural integrity
-    if not grammar_input or len(grammar_input.strip()) == 0:
-        raise ValueError("Grammar cannot be empty.")
-    
-    # Check for valid rules
-    lines = grammar_input.strip().split('\n')
-    for line in lines:
-        if not re.match(r'^\s*[A-Z]\s*->\s*[a-zA-Z\s|]+$', line):
-            raise ValueError(f"Invalid grammar rule format: {line}")
-    
-    return True
+def cyk_parser(grammar, string):
+    """Implements the CYK algorithm and returns the parsing table."""
+    n = len(string)
+    table = [[set() for _ in range(n)] for _ in range(n)]
+
+    # Reverse the grammar for easy lookup
+    reversed_grammar = defaultdict(list)
+    for lhs, productions in grammar.items():
+        for rhs in productions:
+            reversed_grammar[tuple(rhs)].append(lhs)
+
+    # Fill the table for single characters
+    for i in range(n):
+        for lhs, rhs_list in grammar.items():
+            for rhs in rhs_list:
+                if len(rhs) == 1 and rhs[0] == string[i]:
+                    table[i][i].add(lhs)
+
+    # Fill the table for longer substrings
+    for length in range(2, n + 1):  # Length of the substring
+        for i in range(n - length + 1):
+            j = i + length - 1
+            for k in range(i, j):
+                for B in table[i][k]:
+                    for C in table[k + 1][j]:
+                        for lhs, rhs_list in grammar.items():
+                            for rhs in rhs_list:
+                                if len(rhs) == 2 and rhs[0] == B and rhs[1] == C:
+                                    table[i][j].add(lhs)
+
+    return table
 
 def build_derivation_tree(table, grammar, string):
-    """Builds the derivation tree from the CYK table with enhanced error handling and memoization."""
+    """Builds the derivation tree from the CYK table using memoization."""
     n = len(string)
-    start_symbol = list(grammar.keys())[0]  # First key is typically the start symbol
+    start_symbol = list(grammar.keys())[0]  # Assume the first key is the start symbol
 
     # Check if the start symbol is in the top-right cell
     if start_symbol not in table[0][n - 1]:
@@ -87,13 +90,6 @@ def build_derivation_tree(table, grammar, string):
                                 node = Node(lhs, [left_subtree, right_subtree])
                                 cache[(i, j, symbol)] = node
                                 return node
-                elif len(rhs) == 1:
-                    if rhs[0] in table[i][j]:
-                        inner = helper(i, j, rhs[0])
-                        if inner:
-                            node = Node(lhs, [inner])
-                            cache[(i, j, symbol)] = node
-                            return node
 
         # If no valid derivation found, cache and return None
         cache[(i, j, symbol)] = None
@@ -101,45 +97,6 @@ def build_derivation_tree(table, grammar, string):
 
     return helper(0, n - 1, start_symbol)
 
-
-def cyk_parser(grammar, input_string):
-    """
-    Enhanced CYK parser with more robust error checking and rule handling.
-    """
-    # Validate input
-    if not input_string:
-        raise ValueError("Input string cannot be empty.")
-    
-    n = len(input_string)
-    table = [[set() for _ in range(n)] for _ in range(n)]
-
-    # Base case: Fill the diagonal (single character matches)
-    for i in range(n):
-        char = input_string[i]
-        for lhs, rhs_list in grammar.items():
-            for production in rhs_list:
-                if len(production) == 1 and production[0] == char:
-                    table[i][i].add(lhs)
-    
-    # Recursive case: Fill the table for substrings of length 2 to n
-    for length in range(2, n + 1):
-        for start in range(n - length + 1):
-            end = start + length - 1
-            for split in range(start, end):
-                for lhs, rhs_list in grammar.items():
-                    for production in rhs_list:
-                        # Support both binary and unary rules
-                        if len(production) == 2:
-                            left, right = production
-                            if left in table[start][split] and right in table[split + 1][end]:
-                                table[start][end].add(lhs)
-                        elif len(production) == 1:
-                            # Unary rule propagation
-                            if production[0] in table[start][end]:
-                                table[start][end].add(lhs)
-    
-    # Check if any symbol is in the top-right cell
-    return len(table[0][n - 1]) > 0, table
 
 def text_to_json(cfg_text):
     """
