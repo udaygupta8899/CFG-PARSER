@@ -47,7 +47,7 @@ def validate_grammar_input(grammar_input):
     return True
 
 def build_derivation_tree(table, grammar, string):
-    """Builds the derivation tree from the CYK table with enhanced error handling."""
+    """Builds the derivation tree from the CYK table with an iterative approach to avoid deep recursion."""
     n = len(string)
     start_symbol = list(grammar.keys())[0]  # First key is typically the start symbol
 
@@ -55,36 +55,52 @@ def build_derivation_tree(table, grammar, string):
     if start_symbol not in table[0][n - 1]:
         return None
 
-    def helper(i, j, symbol):
-        # Base case: single character 
-        if i == j:
-            for lhs, rhs_list in grammar.items():
-                for rhs in rhs_list:
-                    if len(rhs) == 1 and rhs[0] == string[i]:
-                        return Node(lhs, [Node(string[i])])
-            return None
+    # Iterative approach using a stack
+    stack = [(0, n - 1, start_symbol, None)]  # (i, j, symbol, parent_node)
+    root = None
+    nodes = {}  # Map (i, j, symbol) -> Node
 
-        # Try all possible ways to derive the symbol
+    while stack:
+        i, j, symbol, parent_node = stack.pop()
+
+        # If the node already exists, link it
+        if (i, j, symbol) in nodes:
+            node = nodes[(i, j, symbol)]
+        else:
+            # Create a new node
+            node = Node(symbol)
+            nodes[(i, j, symbol)] = node
+
+        # Link the node to its parent if applicable
+        if parent_node:
+            parent_node.children.append(node)
+
+        # Assign root if it hasn't been set
+        if root is None:
+            root = node
+
+        # Base case: Single character derivation
+        if i == j:
+            node.children.append(Node(string[i]))
+            continue
+
+        # Recursive case: Add children based on grammar
         for lhs, rhs_list in grammar.items():
             for rhs in rhs_list:
-                # Support both binary and unary rules
-                if len(rhs) == 2:
+                if len(rhs) == 2:  # Binary rule
+                    left, right = rhs
                     for k in range(i, j):
-                        left, right = rhs
                         if left in table[i][k] and right in table[k + 1][j]:
-                            left_subtree = helper(i, k, left)
-                            right_subtree = helper(k + 1, j, right)
-                            if left_subtree and right_subtree:
-                                return Node(lhs, [left_subtree, right_subtree])
-                elif len(rhs) == 1:
-                    # Unary rule support
+                            stack.append((i, k, left, node))
+                            stack.append((k + 1, j, right, node))
+                            break
+                elif len(rhs) == 1:  # Unary rule
                     if rhs[0] in table[i][j]:
-                        inner = helper(i, j, rhs[0])
-                        if inner:
-                            return Node(lhs, [inner])
-        return None
+                        stack.append((i, j, rhs[0], node))
+                        break
 
-    return helper(0, n - 1, start_symbol)
+    return root
+
 
 def cyk_parser(grammar, input_string):
     """
