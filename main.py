@@ -120,7 +120,7 @@ try:
     if input_mode == "Text":
         grammar_text_input = st.sidebar.text_area(
             "Enter Grammar (Text Format)",
-            value="S -> A X | B A | A C\nX -> B C\nA -> a | S\nB -> b\nC -> c",
+            value="S -> A X | B A | A C\nX -> B C\nA -> a\nB -> b\nC -> c",
             height=200,
         )
         validate_grammar_input(grammar_text_input)
@@ -128,7 +128,7 @@ try:
     else:
         grammar_input = st.sidebar.text_area(
             "Enter Grammar (JSON Format)",
-            value='{"S": [["A", "X"], ["B", "A"], ["A", "C"]],"X":[["B","C"]], "A": [["a"], ["S"]], "B": [["b"]], "C": [["c"]]}',
+            value='{"S": [["A", "X"], ["B", "A"], ["A", "C"]],"X":[["B","C"]], "A": [["a"]], "B": [["b"]], "C": [["c"]]}',
             height=200,
         )
         grammar = json.loads(grammar_input)
